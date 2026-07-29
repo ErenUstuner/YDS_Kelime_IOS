@@ -66,10 +66,6 @@ workflows:
     instance_type: mac_mini_m2
     environment:
       <<: *env_versions
-      groups:
-        # Codemagic arayüzünde "app_store_credentials" adlı bir değişken
-        # grubu oluşturup App Store Connect API anahtarını oraya koyun.
-        - app_store_credentials
       vars:
         BUNDLE_ID: "com.ustuner.ydskelimelerim"
         WIDGET_BUNDLE_ID: "com.ustuner.ydskelimelerim.widget"
@@ -77,6 +73,21 @@ workflows:
       ios_signing:
         distribution_type: app_store
         bundle_identifier: com.ustuner.ydskelimelerim
+
+    # ----------------------------------------------------------
+    # App Store Connect entegrasyonu
+    #
+    # Aşağıdaki değer, Codemagic arayüzünde API anahtarına verdiğiniz
+    # ADIN BİREBİR AYNISI olmalı:
+    #   Teams > Integrations > Developer Portal > Manage keys
+    #
+    # Bu blok olmadan `publishing.app_store_connect.auth: integration`
+    # doğrulamadan geçmez — Codemagic hangi anahtarı kullanacağını
+    # bilemez. Aynı entegrasyon `ios_signing` için de kullanılır.
+    # ----------------------------------------------------------
+    integrations:
+      app_store_connect: Codemagic
+
     triggering:
       events:
         - tag
@@ -97,23 +108,24 @@ workflows:
           echo "Derleme numarası: $BUILD_NUMBER"
           sed -i '' "s/^CURRENT_PROJECT_VERSION = .*/CURRENT_PROJECT_VERSION = $BUILD_NUMBER/" Config/App.xcconfig
 
-      - name: Takım kimliğini yaz
-        script: |
-          # DEVELOPMENT_TEAM depoya yazılmaz; Codemagic ortamından gelir.
-          sed -i '' "s/^DEVELOPMENT_TEAM = .*/DEVELOPMENT_TEAM = $APPLE_TEAM_ID/" Config/App.xcconfig
-
       - name: Xcode projesini üret
         script: xcodegen generate
 
       - name: İmzalama dosyalarını al
         script: |
           # Sertifika ve profiller yoksa Codemagic oluşturur.
+          # Widget ayrı bir paket kimliği olduğu için ikinci çağrı şart:
+          # `ios_signing` yalnızca ana uygulamanın profilini hazırlıyor,
+          # eklenti profili eksik kalırsa arşivleme imza hatasıyla durur.
           app-store-connect fetch-signing-files "$BUNDLE_ID" \
             --type IOS_APP_STORE --create
           app-store-connect fetch-signing-files "$WIDGET_BUNDLE_ID" \
             --type IOS_APP_STORE --create
           keychain initialize
           keychain add-certificates
+          # DEVELOPMENT_TEAM'i xcconfig'e elle yazmıyoruz: use-profiles
+          # takım kimliğini, profil adını ve imza kimliğini indirdiği
+          # profillerden okuyup her hedefe kendisi yazıyor.
           xcode-project use-profiles
 
       - name: Testleri çalıştır

@@ -274,21 +274,37 @@ Aylık 500 dakika ücretsiz; bu proje için derleme başına ~8 dakika, yani ayd
    - Aynı ekrandaki **Issuer ID** ve anahtarın **Key ID** değerini not alın.
 
 4. **Codemagic'e tanıtın.**
-   Codemagic → **Teams** → **Integrations** → **Developer Portal** → **Connect**
+   Codemagic → **Teams** → **Integrations** → **Developer Portal** → **Manage keys** → **Add key**
    - Issuer ID, Key ID ve `.p8` dosyasını yükleyin.
-   - Bu bağlantı, `codemagic.yaml` içindeki `ios_signing` bölümünün sertifika ve profilleri **otomatik oluşturmasını** sağlar. Elle sertifika üretmenize gerek kalmaz.
+   - **Anahtara verdiğiniz adı not alın.** Bir sonraki adımda birebir aynısı gerekiyor.
+   - Bu bağlantı sayesinde sertifika ve profiller **otomatik oluşturulur**; elle sertifika üretmenize gerek kalmaz.
 
-5. **Takım kimliğini ortam değişkeni yapın.**
-   Codemagic → uygulamanız → **Environment variables**
-   - `APPLE_TEAM_ID` = 10 haneli Team ID → grup: `app_store_credentials`
+5. **`codemagic.yaml` içinde iki satır düzeltin.**
 
-6. **`codemagic.yaml` içinde tek satır düzeltin:**
    ```yaml
-   APP_STORE_APPLE_ID: "0000000000"   # ← App Store Connect'teki sayısal uygulama kimliği
+   integrations:
+     app_store_connect: Codemagic      # ← 4. adımda anahtara verdiğiniz ad
    ```
-   Bu numarayı [9. bölümde](#9-app-store-connect-kurulumu) uygulamayı oluşturduktan sonra alacaksınız (App Store Connect → Uygulama → App Information → Apple ID).
 
-7. **Derlemeyi başlatın:**
+   ```yaml
+   APP_STORE_APPLE_ID: "0000000000"    # ← App Store Connect'teki sayısal uygulama kimliği
+   ```
+
+   Apple ID numarasını [9. bölümde](#9-app-store-connect-kurulumu) uygulamayı oluşturduktan sonra alacaksınız (App Store Connect → Uygulama → App Information → Apple ID).
+
+   > **`integrations` bloğu neden zorunlu:** `publishing → app_store_connect → auth: integration` satırı, Codemagic'e "kimlik doğrulamayı entegrasyondan al" diyor — ama hangi entegrasyondan olduğunu söylemiyor. `integrations` bloğu olmadan yapılandırma doğrulamadan geçmez ve şu hatayı verir:
+   >
+   > ```
+   > 1 validation error in codemagic.yaml:
+   > release -> publishing -> auth -> "integration" requires
+   > workflow -> integrations -> app_store_connect
+   > ```
+   >
+   > Aynı entegrasyon `ios_signing` bölümü için de kullanılır; iki yerde ayrı ayrı tanımlamaya gerek yok.
+
+   Takım kimliğini (`DEVELOPMENT_TEAM`) hiçbir yere yazmanız gerekmiyor: `xcode-project use-profiles` komutu takım kimliğini, profil adını ve imza kimliğini indirdiği profillerden okuyup her hedefe kendisi yazıyor.
+
+6. **Derlemeyi başlatın:**
    ```powershell
    git tag v1.0.0
    git push origin v1.0.0
@@ -515,9 +531,9 @@ Sıralı kontrol listesi. Her madde önceki maddeye bağlı:
 - [ ] **3.** App Store Connect'te uygulama kaydı açıldı, Apple ID alındı → [9](#9-app-store-connect-kurulumu)
 - [ ] **4.** AdMob'da uygulama ve üç reklam birimi oluşturuldu → [10](#10-admob-kurulumu)
 - [ ] **5.** `Config/App.xcconfig` dolduruldu (Team ID + 4 AdMob kimliği)
-- [ ] **6.** `codemagic.yaml` içindeki `APP_STORE_APPLE_ID` yazıldı
+- [ ] **6.** `codemagic.yaml` içindeki `APP_STORE_APPLE_ID` ve `integrations → app_store_connect` yazıldı
 - [ ] **7.** Kod özel bir Git deposuna itildi
-- [ ] **8.** Codemagic bağlandı, API anahtarı tanıtıldı, `APPLE_TEAM_ID` eklendi
+- [ ] **8.** Codemagic bağlandı, API anahtarı tanıtıldı, adı `integrations` bloğuyla eşleşiyor
 - [ ] **9.** `git tag v1.0.0 && git push origin v1.0.0` → derleme başlar
 - [ ] **10.** TestFlight'ta uygulama göründü, kendi cihazınızda denendi
 - [ ] **11.** Ekran görüntüleri alındı (reklamlar kapalıyken)
@@ -649,6 +665,12 @@ Aynı derleme numarası ikinci kez yüklendi. CI numarayı otomatik artırıyor;
 
 **`Missing compliance` (TestFlight'ta uygulama "İşleniyor"da takılı)**
 `ITSAppUsesNonExemptEncryption` anahtarı `Info.plist` içinde `false` olarak var; bu hatayı görüyorsanız Info.plist derlemeye girmemiş demektir.
+
+**Codemagic: `"integration" requires workflow -> integrations -> app_store_connect`**
+`codemagic.yaml` içindeki `integrations → app_store_connect` değeri eksik ya da Codemagic'te tanımlı anahtarın adıyla birebir aynı değil. Adı **Teams → Integrations → Developer Portal → Manage keys** ekranından kopyalayın; büyük/küçük harf ve boşluklar dâhil aynı olmalı.
+
+**Codemagic: "The repository doesn't seem to contain a mobile application"**
+Beklenen davranış. Codemagic depoda `.xcodeproj` arıyor, bizde yok — `project.yml`'den derleme sırasında üretiliyor. Kurulum sihirbazında **Set type manually** → **iOS App** seçin, proje yolunu boş bırakın, sonra yapılandırma modunu **codemagic.yaml** yapın.
 
 **AdMob "Uygulamanız bulunamadı" uyarısı**
 Uygulama App Store'da yayınlandıktan sonra AdMob'daki kaydı mağaza listesiyle eşleştirin. Eşleşmeden app-ads.txt doğrulanmaz.
