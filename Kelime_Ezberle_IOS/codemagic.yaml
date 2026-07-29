@@ -1,0 +1,153 @@
+# ============================================================
+# Codemagic — Mac'siz derleme ve App Store'a gönderim
+#
+# Bu dosya, Windows'ta yazdığınız kodun bulutta bir macOS makinesinde
+# derlenip TestFlight'a yüklenmesini sağlar. Yerel Xcode gerekmez.
+#
+# Kurulum README'nin "Mac olmadan yayınlama" bölümünde adım adım anlatılıyor.
+# Özet: App Store Connect API anahtarı üretip Codemagic'e tanıtırsınız,
+# sertifika ve profilleri Codemagic sizin adınıza oluşturur.
+# ============================================================
+
+definitions:
+  env_versions: &env_versions
+    xcode: latest
+    cocoapods: default
+
+workflows:
+
+  # ----------------------------------------------------------
+  # Her itmede: proje üret, test et. İmzalama gerekmez.
+  # Hızlı geri bildirim döngüsü — 3-4 dakika.
+  # ----------------------------------------------------------
+  test:
+    name: Testler
+    max_build_duration: 30
+    instance_type: mac_mini_m2
+    environment:
+      <<: *env_versions
+    triggering:
+      events:
+        - push
+        - pull_request
+    scripts:
+      - name: XcodeGen kur
+        script: brew install xcodegen
+
+      - name: Xcode projesini üret
+        script: xcodegen generate
+
+      - name: Testleri çalıştır
+        script: |
+          xcodebuild test \
+            -project YDSKelimelerim.xcodeproj \
+            -scheme YDSKelimelerim \
+            -destination 'platform=iOS Simulator,name=iPhone 16,OS=latest' \
+            -resultBundlePath build/test.xcresult \
+            CODE_SIGNING_ALLOWED=NO \
+            | xcbeautify
+    artifacts:
+      - build/test.xcresult
+    publishing:
+      email:
+        recipients:
+          - eren_ustun_er@hotmail.com
+        notify:
+          success: false
+          failure: true
+
+  # ----------------------------------------------------------
+  # Sürüm: imzalı arşiv üretip TestFlight'a yükler.
+  # Yalnızca v* etiketi itildiğinde çalışır.
+  # ----------------------------------------------------------
+  release:
+    name: App Store sürümü
+    max_build_duration: 60
+    instance_type: mac_mini_m2
+    environment:
+      <<: *env_versions
+      groups:
+        # Codemagic arayüzünde "app_store_credentials" adlı bir değişken
+        # grubu oluşturup App Store Connect API anahtarını oraya koyun.
+        - app_store_credentials
+      vars:
+        BUNDLE_ID: "com.ustuner.ydskelimelerim"
+        WIDGET_BUNDLE_ID: "com.ustuner.ydskelimelerim.widget"
+        APP_STORE_APPLE_ID: "0000000000"   # App Store Connect'teki sayısal uygulama kimliği
+      ios_signing:
+        distribution_type: app_store
+        bundle_identifier: com.ustuner.ydskelimelerim
+    triggering:
+      events:
+        - tag
+      tag_patterns:
+        - pattern: 'v*'
+          include: true
+
+    scripts:
+      - name: XcodeGen kur
+        script: brew install xcodegen
+
+      - name: Derleme numarasını belirle
+        script: |
+          # TestFlight aynı derleme numarasını iki kez kabul etmez.
+          # App Store Connect'teki en yüksek numaranın bir fazlasını alıyoruz;
+          # elle takip etmek er geç unutuluyor ve yükleme reddediliyor.
+          BUILD_NUMBER=$(($(app-store-connect get-latest-testflight-build-number "$APP_STORE_APPLE_ID" 2>/dev/null || echo 0) + 1))
+          echo "Derleme numarası: $BUILD_NUMBER"
+          sed -i '' "s/^CURRENT_PROJECT_VERSION = .*/CURRENT_PROJECT_VERSION = $BUILD_NUMBER/" Config/App.xcconfig
+
+      - name: Takım kimliğini yaz
+        script: |
+          # DEVELOPMENT_TEAM depoya yazılmaz; Codemagic ortamından gelir.
+          sed -i '' "s/^DEVELOPMENT_TEAM = .*/DEVELOPMENT_TEAM = $APPLE_TEAM_ID/" Config/App.xcconfig
+
+      - name: Xcode projesini üret
+        script: xcodegen generate
+
+      - name: İmzalama dosyalarını al
+        script: |
+          # Sertifika ve profiller yoksa Codemagic oluşturur.
+          app-store-connect fetch-signing-files "$BUNDLE_ID" \
+            --type IOS_APP_STORE --create
+          app-store-connect fetch-signing-files "$WIDGET_BUNDLE_ID" \
+            --type IOS_APP_STORE --create
+          keychain initialize
+          keychain add-certificates
+          xcode-project use-profiles
+
+      - name: Testleri çalıştır
+        script: |
+          xcodebuild test \
+            -project YDSKelimelerim.xcodeproj \
+            -scheme YDSKelimelerim \
+            -destination 'platform=iOS Simulator,name=iPhone 16,OS=latest' \
+            CODE_SIGNING_ALLOWED=NO \
+            | xcbeautify
+
+      - name: Arşivle
+        script: |
+          xcode-project build-ipa \
+            --project YDSKelimelerim.xcodeproj \
+            --scheme YDSKelimelerim \
+            --archive-flags="-destination 'generic/platform=iOS'"
+
+    artifacts:
+      - build/ios/ipa/*.ipa
+      - /tmp/xcodebuild_logs/*.log
+      - $HOME/Library/Developer/Xcode/DerivedData/**/Build/**/*.dSYM
+
+    publishing:
+      app_store_connect:
+        auth: integration
+        # İnceleme kuyruğuna otomatik gönderilmez: önce TestFlight'ta
+        # kendiniz deneyin. Hazır olduğunuzda App Store Connect'ten
+        # "İncelemeye gönder" deyin.
+        submit_to_testflight: true
+        submit_to_app_store: false
+      email:
+        recipients:
+          - eren_ustun_er@hotmail.com
+        notify:
+          success: true
+          failure: true

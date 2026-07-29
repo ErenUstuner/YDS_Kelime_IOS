@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+	Arşivden IPA üretirken kullanılan seçenekler.
+	__TEAM_ID__ yer tutucusu CI tarafından değiştirilir.
+-->
+<plist version="1.0">
+<dict>
+	<key>method</key>
+	<string>app-store-connect</string>
+	<key>teamID</key>
+	<string>__TEAM_ID__</string>
+	<key>signingStyle</key>
+	<string>manual</string>
+	<key>provisioningProfiles</key>
+	<dict>
+		<key>com.ustuner.ydskelimelerim</key>
+		<string>YDSKelimelerim AppStore</string>
+		<key>com.ustuner.ydskelimelerim.widget</key>
+		<string>YDSKelimelerim Widget AppStore</string>
+	</dict>
+	<!-- Sembol dosyalarını yükle: TestFlight ve App Store çökme
+	     raporlarında satır numaralarını görebilmek için şart. -->
+	<key>uploadSymbols</key>
+	<true/>
+	<!-- Bitcode 2022'de kaldırıldı; açık bırakmak uyarı üretiyor. -->
+	<key>compileBitcode</key>
+	<false/>
+	<key>stripSwiftSymbols</key>
+	<true/>
+	<key>destination</key>
+	<string>export</string>
+</dict>
+</plist>
